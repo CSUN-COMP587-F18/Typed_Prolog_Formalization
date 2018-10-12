@@ -1,4 +1,11 @@
 module Main where
 
+import Generator (generate)
+import System.Environment
+
+
 main :: IO ()
-main = putStrLn "Hello, Haskell!"
+main = do
+    args <- getArgs
+    writeFile (head args) $ generate "true"
+

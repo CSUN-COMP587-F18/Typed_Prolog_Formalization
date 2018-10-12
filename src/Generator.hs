@@ -1,4 +1,4 @@
-import System.Environment
+module Generator (generate) where
 
 generateTerm :: Int -> Int -> String
 generateTerm x state =
@@ -7,11 +7,6 @@ generateTerm x state =
 generate body
     = "clausedef(test, [], []). \n\
       \test :- \n\t"++ body ++"."
-
-
-main = do
-    args <- getArgs
-    writeFile (head args) $ generate "true"
 
 
 
