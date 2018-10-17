@@ -7,5 +7,6 @@ import System.Environment
 main :: IO ()
 main = do
     args <- getArgs
-    writeFile (head args) $ generatePrologFile "true"
+    contents <- generatePrologFile
+    writeFile (head args) $ contents
 
