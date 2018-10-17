@@ -8,5 +8,8 @@ main :: IO ()
 main = do
     args <- getArgs
     contents <- generatePrologFile
-    writeFile (head args) $ contents
+    case length args of
+        0 -> putStrLn "Needs an argument for file name."
+        otherwise -> writeFile (head args) $ contents
+    
 
