@@ -6,39 +6,51 @@ import GHC.Generics
 import Test.QuickCheck
 import Test.QuickCheck.Arbitrary.ADT
 
-
 data Atom = Atom String deriving (Generic, Show)
 
 data Exp = 
       IntExp Int 
-    | VarExp String
+    | VarExp VarName
     | ExpBOp Exp BinOp Exp
     deriving (Generic)
+
+data FirstOrderCall = FirstOrderCall VarName deriving Generic
     
 data Body = 
         Is Elhs Exp 
     |   BodyBinOp Body BodyBinOp Body
-    deriving (Generic)
+    |   BodyFirstOrderCall FirstOrderCall
+    deriving Generic
 
-data BodyBinOp = And | Or | Implies deriving (Generic)
+data BodyBinOp = And | Or | Implies deriving Generic
 
-data BinOp = Plus | Minus | Div deriving (Generic)
+data BinOp = Plus | Minus | Div deriving Generic
 
-data UnOp = Msb | Abs | Truncate deriving (Generic)
+data UnOp = Msb | Abs | Truncate deriving Generic
 
-data Elhs = IntElhs Int | VarElhs String deriving (Generic)
+data Elhs = IntElhs Int | VarElhs VarName deriving Generic
         
-data Term = IntTerm Int | VarTerm String deriving (Generic)
+data Term = IntTerm Int | VarTerm VarName deriving Generic
 
+newtype VarName = VarName { unwrapVarName :: String } deriving Show
+
+genVarChar :: Gen Char
+genVarChar = elements ['a'..'z']
+
+genVarName :: Gen String
+genVarName = listOf genVarChar
+
+instance Show FirstOrderCall where
+    show _ = "uClause(X)."
 
 instance Show Exp where
     show (IntExp i) = show i
-    show (VarExp str) = str
+    show (VarExp str) = show $ unwrapVarName str
     show (ExpBOp e1 bop e2) = show e1 ++ show bop ++ show e2
     
 instance Show Body where
     show (Is elhs exp) = show elhs ++ " is " ++ show exp
-    show (BodyBinOp b1 bop b2) = "bodyPair("
+    show (BodyBinOp b1 bop b2) = "(" ++ show b1 ++ " " ++ show bop ++ " " ++ show b2 ++ ")"
 
 instance Show BodyBinOp where
     show (And) = "&&"
@@ -52,17 +64,20 @@ instance Show BinOp where
 
 instance Show Elhs where
     show (IntElhs int) = show int
-    show (VarElhs str) = str
+    show (VarElhs str) = show $ unwrapVarName str
 
 instance Show Term where
     show (IntTerm int) = show int
-    show (VarTerm str) = str
+    show (VarTerm str) = show $ unwrapVarName str
 
 
 instance Arbitrary Exp where
   arbitrary = genericArbitrary
 
 instance Arbitrary Body where
+  arbitrary = genericArbitrary
+
+instance Arbitrary FirstOrderCall where
   arbitrary = genericArbitrary
 
 instance Arbitrary BodyBinOp where
@@ -76,6 +91,9 @@ instance Arbitrary Elhs where
 
 instance Arbitrary Term where
   arbitrary = genericArbitrary
+
+instance Arbitrary VarName where
+  arbitrary = VarName <$> genVarName
 
 instance ToADTArbitrary Exp
 
@@ -100,5 +118,7 @@ generateBody = do
 generatePrologFile :: IO String
 generatePrologFile = do 
     body <- generateBody
-    return $ "clausedef(test, [], []). \n\
-      \test :- \n\t"++ show body ++"."
+    return $ "clausedef(uClause, [], [int]). \n\
+            \uClause(X) :- true.\n\
+        \clausedef(test, [], []). \n\
+            \test :- \n\t"++ show body  ++"."
