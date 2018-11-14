@@ -19,10 +19,13 @@ data FirstOrderCall = FirstOrderCall VarName deriving Generic
 data Body = 
         Is Elhs Exp 
     |   BodyBinOp Body BodyBinOp Body
+    |   BodyUOp Body
     |   BodyFirstOrderCall FirstOrderCall
     deriving Generic
 
 data BodyBinOp = And | Or | Implies deriving Generic
+
+data BodyUnOp = Not deriving Generic
 
 data BinOp = Plus | Minus | Div deriving Generic
 
@@ -53,14 +56,17 @@ instance Show Body where
     show (BodyBinOp b1 bop b2) = "(" ++ show b1 ++ " " ++ show bop ++ " " ++ show b2 ++ ")"
 
 instance Show BodyBinOp where
-    show (And) = "&&"
-    show (Or) = "||"
-    show (Implies) = "->"
+    show And = ","
+    show Or = ";"
+    show Implies = "->"
     
 instance Show BinOp where
-    show (Plus) = "+"
-    show (Minus) = "-"
-    show (Div) = "/"
+    show Plus = "+"
+    show Minus = "-"
+    show Div = "/"
+
+instance Show BodyUnOp where
+    show Not b = show b
 
 instance Show Elhs where
     show (IntElhs int) = show int
