@@ -146,10 +146,10 @@ generateBody clauses =
         liftM2 Is arbitrary arbitrary,
         liftM3 BodyBinOp arbitrary arbitrary arbitrary,
         liftM BodyUOp arbitrary,
-        BodyFirstOrderCall (FirstOrderCall clauseName)
+        return $ BodyFirstOrderCall (FirstOrderCall clauseName)
     ]
     where 
-        clauseName = getVarName <$> oneof $ map (return :: Gen Clause) clauses
+        clauseName = getVarName $ head clauses
         getVarName (Clause name _) = name
 
 generateProgram :: Gen Program
