@@ -1,10 +1,16 @@
 {-# LANGUAGE DeriveGeneric #-}
-module Generator (generatePrologFile) where
+module Generator where
 
+import Data.List
 import Data.Proxy
 import GHC.Generics
+import Control.Monad
 import Test.QuickCheck
 import Test.QuickCheck.Arbitrary.ADT
+
+data Program = Program [Clause] deriving (Generic, Show)
+
+data Clause = Clause VarName Body deriving Generic
 
 data Atom = Atom String deriving (Generic, Show)
 
@@ -17,7 +23,8 @@ data Exp =
 data FirstOrderCall = FirstOrderCall VarName deriving Generic
     
 data Body = 
-        Is Elhs Exp 
+        TrueBody
+    |   Is Elhs Exp 
     |   BodyBinOp Body BodyBinOp Body
     |   BodyUOp Body
     |   BodyFirstOrderCall FirstOrderCall
@@ -37,14 +44,15 @@ data Term = IntTerm Int | VarTerm VarName deriving Generic
 
 newtype VarName = VarName { unwrapVarName :: String } deriving Show
 
-genVarChar :: Gen Char
-genVarChar = elements ['a'..'z']
+genProgram :: Gen Program
+genProgram = Program <$> listOf (genericArbitrary :: Gen Clause)
 
-genVarName :: Gen String
-genVarName = listOf genVarChar
+instance Show Clause where
+    show (Clause name body) = "clausedef(" ++ show name ++ ", [], [int, int]).\n\
+    \t"++ show name ++"(X, X) :- "++ show body ++"."
 
 instance Show FirstOrderCall where
-    show _ = "uClause(X)."
+    show (FirstOrderCall name) = show name ++"(X)."
 
 instance Show Exp where
     show (IntExp i) = show i
@@ -52,6 +60,7 @@ instance Show Exp where
     show (ExpBOp e1 bop e2) = show e1 ++ show bop ++ show e2
     
 instance Show Body where
+    show (TrueBody) = "true"
     show (Is elhs exp) = show elhs ++ " is " ++ show exp
     show (BodyBinOp b1 bop b2) = "(" ++ show b1 ++ " " ++ show bop ++ " " ++ show b2 ++ ")"
 
@@ -66,7 +75,7 @@ instance Show BinOp where
     show Div = "/"
 
 instance Show BodyUnOp where
-    show Not b = show b
+    show Not = "\\+"
 
 instance Show Elhs where
     show (IntElhs int) = show int
@@ -76,6 +85,11 @@ instance Show Term where
     show (IntTerm int) = show int
     show (VarTerm str) = show $ unwrapVarName str
 
+instance Arbitrary Program where
+  arbitrary = genericArbitrary
+
+instance Arbitrary Clause where
+  arbitrary = genericArbitrary
 
 instance Arbitrary Exp where
   arbitrary = genericArbitrary
@@ -99,7 +113,11 @@ instance Arbitrary Term where
   arbitrary = genericArbitrary
 
 instance Arbitrary VarName where
-  arbitrary = VarName <$> genVarName
+  arbitrary = VarName <$> listOf (elements ['a'..'z'] :: Gen Char)
+
+instance ToADTArbitrary Program
+
+instance ToADTArbitrary Clause
 
 instance ToADTArbitrary Exp
 
@@ -113,18 +131,40 @@ instance ToADTArbitrary Elhs
 
 instance ToADTArbitrary Term
 
+merge :: [a] -> [a] -> [a]
+merge xs     []     = xs
+merge []     ys     = ys
+merge (x:xs) (y:ys) = x : y : merge xs ys
+
 extractAdt :: ADTArbitrarySingleton a -> a
 extractAdt (ADTArbitrarySingleton _ _ (ConstructorArbitraryPair _ adt)) = adt
 
-generateBody ::IO Body
-generateBody = do
-    term <- generate (toADTArbitrarySingleton (Proxy :: Proxy Body))
-    return $ extractAdt term
+generateBody :: [Clause] -> Gen Body
+generateBody clauses =
+    oneof [
+        return TrueBody,
+        liftM2 Is arbitrary arbitrary,
+        liftM3 BodyBinOp arbitrary arbitrary arbitrary,
+        liftM BodyUOp arbitrary,
+        BodyFirstOrderCall (FirstOrderCall clauseName)
+    ]
+    where 
+        clauseName = getVarName <$> oneof $ map (return :: Gen Clause) clauses
+        getVarName (Clause name _) = name
+
+generateProgram :: Gen Program
+generateProgram = do
+    clauses <- listOf (genericArbitrary :: Gen Clause)
+    testClause <- generateTestClause clauses
+    return $ Program clauses
+
+generateTestClause :: [Clause] -> Gen Clause
+generateTestClause clauses = do
+    body <- generateBody clauses
+    clause <- (toADTArbitrarySingleton (Proxy :: Proxy Clause))
+    return $ extractAdt clause
         
 generatePrologFile :: IO String
 generatePrologFile = do 
-    body <- generateBody
-    return $ "clausedef(uClause, [], [int]). \n\
-            \uClause(X) :- true.\n\
-        \clausedef(test, [], []). \n\
-            \test :- \n\t"++ show body  ++"."
+    program <- generate generateProgram
+    return $ show program
