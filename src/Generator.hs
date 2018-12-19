@@ -60,7 +60,7 @@ instance Show Exp where
     show (ExpBOp e1 bop e2) = show e1 ++ show bop ++ show e2
     
 instance Show Body where
-    show (TrueBody) = "true"
+    show TrueBody = "true"
     show (Is elhs exp) = show elhs ++ " is " ++ show exp
     show (BodyBinOp b1 bop b2) = "(" ++ show b1 ++ " " ++ show bop ++ " " ++ show b2 ++ ")"
 
@@ -145,16 +145,17 @@ generateBody clauses =
         return TrueBody,
         liftM2 Is arbitrary arbitrary,
         liftM3 BodyBinOp arbitrary arbitrary arbitrary,
-        liftM BodyUOp arbitrary,
-        return $ BodyFirstOrderCall (FirstOrderCall clauseName)
+        BodyUOp <$> arbitrary,
+        BodyFirstOrderCall <$> FirstOrderCall <$> clauseName clauses
     ]
-    where 
-        clauseName = getVarName $ head clauses
+    where
+        clauseName clauses = getVarName <$> (oneof . map (return :: Clause -> Gen Clause)) clauses
         getVarName (Clause name _) = name
+
 
 generateProgram :: Gen Program
 generateProgram = do
-    clauses <- listOf (genericArbitrary :: Gen Clause)
+    clauses <- listOf1 (genericArbitrary :: Gen Clause)
     testClause <- generateTestClause clauses
     return $ Program clauses
 
