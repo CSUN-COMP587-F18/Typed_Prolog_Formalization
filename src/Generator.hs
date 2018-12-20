@@ -10,7 +10,11 @@ import Test.QuickCheck.Arbitrary.ADT
 
 data Program = Program [Clause] deriving (Generic, Show)
 
-data Clause = Clause VarName Body deriving Generic
+data Clause = Clause {
+    getClauseName :: String,
+    getClauseVars :: [Term],
+    getClauseBody :: Body
+} deriving Generic
 
 data Atom = Atom String deriving (Generic, Show)
 
@@ -20,7 +24,7 @@ data Exp =
     | ExpBOp Exp BinOp Exp
     deriving (Generic)
 
-data FirstOrderCall = FirstOrderCall VarName deriving Generic
+data FirstOrderCall = FirstOrderCall Clause [Term] deriving Generic
     
 data Body = 
         TrueBody
@@ -42,17 +46,17 @@ data Elhs = IntElhs Int | VarElhs VarName deriving Generic
         
 data Term = IntTerm Int | VarTerm VarName deriving Generic
 
-newtype VarName = VarName { unwrapVarName :: String } deriving Show
+newtype VarName = VarName { unwrapVarName :: String } deriving (Show)
 
 genProgram :: Gen Program
 genProgram = Program <$> listOf (genericArbitrary :: Gen Clause)
 
 instance Show Clause where
-    show (Clause name body) = "clausedef(" ++ show name ++ ", [], [int, int]).\n\
+    show (Clause name body vars) = "clausedef(" ++ show name ++ ", [], [int, int]).\n\
     \t"++ show name ++"(X, X) :- "++ show body ++"."
 
 instance Show FirstOrderCall where
-    show (FirstOrderCall name) = show name ++"(X)."
+    show (FirstOrderCall clause vars) = getClauseName clause ++"("++ show (head vars) ++", "++ show (head vars) ++")."
 
 instance Show Exp where
     show (IntExp i) = show i
@@ -139,29 +143,29 @@ merge (x:xs) (y:ys) = x : y : merge xs ys
 extractAdt :: ADTArbitrarySingleton a -> a
 extractAdt (ADTArbitrarySingleton _ _ (ConstructorArbitraryPair _ adt)) = adt
 
-generateBody :: [Clause] -> Gen Body
-generateBody clauses =
+generateBody :: [Clause] -> [Term] -> Gen Body
+generateBody clauses vars =
     oneof [
         return TrueBody,
         liftM2 Is arbitrary arbitrary,
         liftM3 BodyBinOp arbitrary arbitrary arbitrary,
-        BodyUOp <$> arbitrary,
-        BodyFirstOrderCall <$> FirstOrderCall <$> clauseName clauses
+        BodyUOp <$> arbitrary
+        -- BodyFirstOrderCall <$> FirstOrderCall <$> vars <*> clause
     ]
     where
-        clauseName clauses = getVarName <$> (oneof . map (return :: Clause -> Gen Clause)) clauses
-        getVarName (Clause name _) = name
+        clause = (oneof . map (return :: Clause -> Gen Clause))
 
 
 generateProgram :: Gen Program
 generateProgram = do
+    vars <- listOf1 $ oneof [VarTerm <$> arbitrary]
     clauses <- listOf1 (genericArbitrary :: Gen Clause)
-    testClause <- generateTestClause clauses
+    testClause <- generateTestClause clauses vars
     return $ Program clauses
 
-generateTestClause :: [Clause] -> Gen Clause
-generateTestClause clauses = do
-    body <- generateBody clauses
+generateTestClause :: [Clause] -> [Term] -> Gen Clause
+generateTestClause clauses vars = do
+    body <- generateBody clauses vars
     clause <- (toADTArbitrarySingleton (Proxy :: Proxy Clause))
     return $ extractAdt clause
         
