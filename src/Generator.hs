@@ -10,13 +10,36 @@ import Test.QuickCheck.Arbitrary.ADT
 
 data Program = Program [Clause] deriving (Generic, Show)
 
+getClauseTermTypes :: Clause -> [PType]
+getClauseTermTypes clause = map getTermType $ getClauseVars clause
+
 data Clause = Clause {
     getClauseName :: String,
     getClauseVars :: [Term],
     getClauseBody :: Body
 } deriving Generic
 
+data Udt = 
+        UdtA Atom Int Int Int
+    |   UdtB Atom Int Int
+    |   UdtC Atom Int
+    |   UdtD Atom
+    deriving (Generic)
+
+instance Show Udt where
+    show (UdtA _ _ _ _) = "(atom, int, int int)"
+    show (UdtB _ _ _)   = "(atom, int, int)"
+    show (UdtC _ _)     = "(atom, int)"
+    show (UdtD _)       = "atom"
+
+data UdtDef = UdtDefA 
+
+-- instance Show Udt where
+--     show UdtA a i j 
+
 data Atom = Atom String deriving (Generic, Show)
+
+data PType = PInt | PAtom | PUdt Udt deriving (Generic)
 
 data Exp = 
       IntExp Int 
@@ -44,7 +67,11 @@ data UnOp = Msb | Abs | Truncate deriving Generic
 
 data Elhs = IntElhs Int | VarElhs VarName deriving Generic
         
-data Term = IntTerm Int | VarTerm VarName deriving Generic
+data Term = IntTerm Int | VarTerm VarName PType deriving Generic
+
+getTermType :: Term -> PType
+getTermType (IntTerm _) = PInt
+getTermType (VarTerm _ t) = t 
 
 newtype VarName = VarName { unwrapVarName :: String } deriving (Show)
 
@@ -52,11 +79,16 @@ genProgram :: Gen Program
 genProgram = Program <$> listOf (genericArbitrary :: Gen Clause)
 
 instance Show Clause where
-    show (Clause name body vars) = "clausedef(" ++ show name ++ ", [], [int, int]).\n\
+    show (Clause name vars body) = "clausedef(" ++ show name ++ ", [], ["++ show  (map getTermType vars) ++"]).\n\
     \t"++ show name ++"(X, X) :- "++ show body ++"."
 
 instance Show FirstOrderCall where
     show (FirstOrderCall clause vars) = getClauseName clause ++"("++ show (head vars) ++", "++ show (head vars) ++")."
+
+instance Show PType where
+    show PInt = "int"
+    show PAtom = "atom"
+    show (PUdt a) = show a
 
 instance Show Exp where
     show (IntExp i) = show i
@@ -87,7 +119,16 @@ instance Show Elhs where
 
 instance Show Term where
     show (IntTerm int) = show int
-    show (VarTerm str) = show $ unwrapVarName str
+    show (VarTerm str _) = show $ unwrapVarName str
+
+instance Arbitrary Atom where
+  arbitrary = genericArbitrary
+
+instance Arbitrary Udt where
+  arbitrary = genericArbitrary
+
+instance Arbitrary PType where
+  arbitrary = genericArbitrary
 
 instance Arbitrary Program where
   arbitrary = genericArbitrary
@@ -119,6 +160,12 @@ instance Arbitrary Term where
 instance Arbitrary VarName where
   arbitrary = VarName <$> listOf (elements ['a'..'z'] :: Gen Char)
 
+instance ToADTArbitrary Atom
+
+instance ToADTArbitrary Udt
+
+instance ToADTArbitrary PType
+
 instance ToADTArbitrary Program
 
 instance ToADTArbitrary Clause
@@ -143,6 +190,7 @@ merge (x:xs) (y:ys) = x : y : merge xs ys
 extractAdt :: ADTArbitrarySingleton a -> a
 extractAdt (ADTArbitrarySingleton _ _ (ConstructorArbitraryPair _ adt)) = adt
 
+
 generateBody :: [Clause] -> [Term] -> Gen Body
 generateBody clauses vars =
     oneof [
@@ -150,15 +198,16 @@ generateBody clauses vars =
         liftM2 Is arbitrary arbitrary,
         liftM3 BodyBinOp arbitrary arbitrary arbitrary,
         BodyUOp <$> arbitrary
-        -- BodyFirstOrderCall <$> FirstOrderCall <$> vars <*> clause
+        -- BodyFirstOrderCall <$> FirstOrderCall <*> clause  <$> [var]
     ]
     where
-        clause = (oneof . map (return :: Clause -> Gen Clause))
+        clause = (oneof . map (return :: Clause -> Gen Clause)) clauses
+        var = (oneof . map (return :: Term -> Gen Term)) vars
 
 
 generateProgram :: Gen Program
 generateProgram = do
-    vars <- listOf1 $ oneof [VarTerm <$> arbitrary]
+    vars <- listOf1 $ oneof [VarTerm <$> arbitrary <*> arbitrary]
     clauses <- listOf1 (genericArbitrary :: Gen Clause)
     testClause <- generateTestClause clauses vars
     return $ Program clauses
