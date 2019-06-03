@@ -14,7 +14,7 @@ data GState = GState Gamma Udts
 data Gamma = Gamma [(Identifier, Type)]
 data Udts = Udts [(Identifier, [CDef])]
 
-newtype Identifier = Identifier { name :: String } 
+newtype Identifier = Identifier { name :: String } deriving Generic
 
 data Clause = Clause {
     getClauseName :: String,
@@ -24,9 +24,9 @@ data Clause = Clause {
 
 newtype Type = Type { identifier :: Identifier} deriving Generic
 
-data CDef = CDef Identifier [Type]
+data CDef = CDef Identifier [Type] deriving Generic
 
-data Adt = Adt Identifier [CDef]
+data Adt = Adt Identifier [CDef] deriving Generic
 
 data BinOp = Plus | Minus | Div deriving Generic
 
@@ -58,62 +58,77 @@ instance Show Identifier where
 instance Show Type where
     show (Type (Identifier name)) = name
 
+-- instance Show Clause where
+--     show (Clause name vars body) = "clausedef(" ++ show name ++ ", [], ["++ show  (map getTermType vars) ++"]).\n\
+--     \t"++ show name ++"(X, X) :- "++ show body ++"."
+
 instance Show Term where
     show (IntTerm i) = show i
     show (VarTerm i) = show i
 
 instance Show Adt where
     show (Adt name cdefs) = 
-        "datadef("++ show name ++", [], ["++  (concat $ map show cdefs)  ++"])."
+        "datadef("++ show name ++", [], ["++  (concatMap show cdefs)  ++"])."
 
 instance Show CDef where
     show (CDef name paramTypes) =
         show name ++ "(" ++ (intercalate ",") (map show paramTypes) ++ ")"
 
 instance Arbitrary Clause where
-  arbitrary = genericArbitrary
+    arbitrary = genericArbitrary
 
 instance Arbitrary Body where
-  arbitrary = genericArbitrary
+    arbitrary = genericArbitrary
 
 instance Arbitrary BinOp where
-  arbitrary = genericArbitrary
+    arbitrary = genericArbitrary
+
+instance Arbitrary Adt where
+    arbitrary = genericArbitrary
+
+instance Arbitrary CDef where
+    arbitrary = genericArbitrary
 
 instance Arbitrary BodyBinOp where
-  arbitrary = genericArbitrary
+    arbitrary = genericArbitrary
 
 instance Arbitrary Exp where
-  arbitrary = genericArbitrary
+    arbitrary = genericArbitrary
 
 instance Arbitrary Term where
-  arbitrary = genericArbitrary
+    arbitrary = genericArbitrary
 
 instance Arbitrary Elhs where
-  arbitrary = genericArbitrary
+    arbitrary = genericArbitrary
 
 instance Arbitrary Type where
-  arbitrary = genericArbitrary
+    arbitrary = genericArbitrary
 
 instance Arbitrary Identifier where
-  arbitrary = Identifier <$> listOf (elements ['a'..'z'] :: Gen Char)
+    arbitrary = Identifier <$> listOf (elements ['a'..'z'] :: Gen Char)
 
-instance ToADTArbitrary Clause
+generateAdts :: State GState (Gen [Adt])
+generateAdts = do 
+    GState _ (Udts alist) <- get
+    return $ listOf1 (generateAdtFromExisting $ map fst alist)
+    
 
-instance ToADTArbitrary Term
+generateCdefFromExisting :: [Identifier] -> Gen CDef
+generateCdefFromExisting identifiers = CDef <$> (arbitrary :: Gen Identifier) <*> (sublistOf types)
+    where
+        types = map Type identifiers
 
-instance ToADTArbitrary Type
+generateAdtFromExisting :: [Identifier] -> Gen Adt
+generateAdtFromExisting types = Adt <$> (arbitrary :: Gen Identifier) <*> listOf (generateCdefFromExisting types)
 
-extractAdt :: ADTArbitrarySingleton a -> a
-extractAdt (ADTArbitrarySingleton _ _ (ConstructorArbitraryPair _ adt)) = adt
+generateClauses :: State GState (Gen [Clause])
+generateClauses =
+    return $ listOf1 (genericArbitrary :: Gen Clause)
 
-generateProgram :: State GState (Gen Term)
-generateProgram =
-    return (genericArbitrary :: Gen Term)
-
--- generateOutput :: IO (State GState (Gen Term))
+generateOutput :: IO String
 generateOutput = do
-    term <- fst (runState generateProgram emptyState)
-    return $ show term
+    adt <- generate $ evalState generateAdts emptyState
+    return $ show adt
     where 
         emptyState = GState (Gamma []) (Udts [])
 
